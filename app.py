@@ -1,13 +1,15 @@
-from fastapi import FastAPI, HTTPException
-
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from transformers import DistilBertForQuestionAnswering, DistilBertTokenizer
 import torch
 import logging
-
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+# Serve static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Allow CORS
 app.add_middleware(
@@ -17,8 +19,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
 
 model_name = "distilbert-base-uncased-distilled-squad"
 model = DistilBertForQuestionAnswering.from_pretrained(model_name)
@@ -31,7 +31,6 @@ class QARequest(BaseModel):
 def preprocess(question: str, context: str):
     inputs = tokenizer.encode_plus(question, context, add_special_tokens=True, return_tensors="pt")
     return inputs
-
 
 @app.post("/qa/")
 def get_answer(request: QARequest):
@@ -48,12 +47,6 @@ def get_answer(request: QARequest):
         answer_tokens = tokenizer.convert_ids_to_tokens(inputs["input_ids"][0][answer_start:answer_end])
         answer = tokenizer.convert_tokens_to_string(answer_tokens)
 
-        # Log intermediate outputs
-        print(f"Start Logits: {answer_start_scores}")
-        print(f"End Logits: {answer_end_scores}")
-        print(f"Answer Tokens: {answer_tokens}")
-        print(f"Answer: {answer}")
-
         if not answer.strip():  # Check if the answer is empty
             raise HTTPException(status_code=404, detail="No answer found.")
 
@@ -61,6 +54,10 @@ def get_answer(request: QARequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/")
+def read_index():
+    return FileResponse("static/index.html")
 
 if __name__ == "__main__":
     import uvicorn
